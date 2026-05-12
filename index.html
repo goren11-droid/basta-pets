@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
@@ -566,15 +567,11 @@ const SB_BASE_URL='https://test.smartbee.co.il/api/v1';
 let sbToken=null, sbTokenExpiry=null;
 
 async function sbFetch(path, method='GET', body=null, token=null){
-  const url=SB_BASE_URL+path;
-  const headers={'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'};
+  const headers={'Content-Type':'application/json'};
   if(token) headers['Authorization']='Bearer '+token;
-  // Use corsproxy.io as CORS bypass
-  const proxyUrl='https://corsproxy.io/?'+encodeURIComponent(url);
-  const r=await fetch(proxyUrl,{
-    method,
-    headers,
-    body: body?JSON.stringify(body):undefined
+  // Call via Netlify Function proxy
+  const r=await fetch('/.netlify/functions/sb?path='+encodeURIComponent(path),{
+    method, headers, body: body?JSON.stringify(body):undefined
   });
   if(!r.ok) throw new Error('HTTP '+r.status);
   return r.json();
