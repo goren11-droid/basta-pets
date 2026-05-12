@@ -1,7 +1,8 @@
 [build]
   functions = "netlify/functions"
+  publish = "."
 
 [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
+  from = "/api/sb"
+  to = "/.netlify/functions/sb"
   status = 200
