@@ -248,6 +248,7 @@ tfoot .stk{background:#1c1917}
               <button class="fb-b active" onclick="setFilter('all',this)">הכל</button>
               <button class="fb-b" onclick="setFilter('unpaid',this)">טרם שולמו</button>
               <button class="fb-b" onclick="setFilter('unsupplied',this)">טרם סופקו</button>
+              <button class="fb-b" onclick="setFilter('noinvoice',this)">📄 ללא חשבונית</button>
             </div>
           </div>
           <button onclick="showPage('orders')" style="color:#d97706;font-size:12px;font-weight:600;background:none;border:none;cursor:pointer;font-family:inherit">צפה בטבלה ←</button>
@@ -1067,31 +1068,12 @@ function generateInvoice(orderId){
 function assignInvoiceNum(orderId){
   const o=orders.find(x=>x.id===orderId);
   if(!o)return null;
-  if(!o.invoiceNum){
-    const num=invoiceCounter;
-    orders=orders.map(x=>x.id===orderId?{...x,invoiceNum:num,invoiceSent:true}:x);
-    invoiceCounter++;
-    // Save invoice snapshot to archive
-    const inv=orders.find(x=>x.id===orderId);
-    const c=clients.find(x=>x.name===o.clientName);
-    const snap={
-      id:'inv_'+num,
-      num:num,
-      date:o.date||today(),
-      savedAt:new Date().toISOString(),
-      clientName:o.clientName,
-      clientPhone:c?.phone||'',
-      clientAddress:c?.address||'',
-      clientCity:c?.city||'',
-      items:o.items,
-      total:o.total,
-      paymentMethod:o.paymentMethod||'מזומן',
-      biz:{...bizSettings}
-    };
-    invoices.push(snap);
-    saveToLocalStorage();
-    syncToFirebase();
-  }
+  // אם יש כבר מספר SmartBee — החזר כמו שזה
+  if(o.invoiceNum) return o;
+  // אחרת — סמן כנשלח בלי מספר
+  orders=orders.map(x=>x.id===orderId?{...x,invoiceSent:true}:x);
+  saveToLocalStorage();
+  syncToFirebase();
   return orders.find(x=>x.id===orderId);
 }
 
@@ -1225,13 +1207,15 @@ function sendInvoiceWA(orderId){
   if(!inv)return;
   const c=clients.find(x=>x.name===inv.clientName);
   if(!c?.phone)return alert('אין מספר טלפון ללקוח זה.\nהוסף טלפון בכרטיס הלקוח.');
+  // השתמש במספר SmartBee אם קיים
   const num=inv.invoiceNum||'';
   const items=inv.items.map(i=>`• ${i.name} x${i.quantity} — ₪${fmt(i.price*i.quantity)}`).join('\n');
   const msg=`שלום ${inv.clientName} 🐾\n\nחשבונית מס קבלה מספר ${num}\nתאריך: ${inv.date}\n\n${items}\n\nסה"כ לתשלום: ₪${fmt(inv.total)}\nאמצעי תשלום: ${inv.paymentMethod||'מזומן'}\n\n${bizSettings.name}\n📞 ${bizSettings.phone}`;
   const phone=c.phone.replace(/\D/g,'').replace(/^0/,'972');
   document.getElementById('inv-modal')?.remove();
-  // פתח WhatsApp
-  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
+  // פתח PDF להורדה ואז WhatsApp
+  buildDocx(inv);
+  setTimeout(()=>window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank'),800);
 }
 
 
@@ -1754,7 +1738,12 @@ function renderStats(){
 }
 function renderDash(){
   const tb=document.getElementById('db-body');
-  const fl=orders.filter(o=>o.total>0).filter(o=>dFilter==='unpaid'?!o.isPaid:dFilter==='unsupplied'?!o.isSupplied:true).slice(0,10);
+  const fl=orders.filter(o=>o.total>0).filter(o=>
+    dFilter==='unpaid'?!o.isPaid:
+    dFilter==='unsupplied'?!o.isSupplied:
+    dFilter==='noinvoice'?(!o.invoiceSent&&o.isPaid):
+    true
+  ).slice(0,10);
   if(!fl.length){tb.innerHTML='<tr><td colspan="7" class="es"><div class="ei">📋</div><div class="et">אין הזמנות</div><div class="ec">לחץ "הזמנה חדשה" כדי להתחיל!</div></td></tr>';return;}
   const MESH='https://meshulam.co.il/business/payment';
   tb.innerHTML=fl.map(o=>{
