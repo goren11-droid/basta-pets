@@ -1741,7 +1741,7 @@ function renderDash(){
   const fl=orders.filter(o=>o.total>0).filter(o=>
     dFilter==='unpaid'?!o.isPaid:
     dFilter==='unsupplied'?!o.isSupplied:
-    dFilter==='noinvoice'?(!o.invoiceSent&&o.isPaid):
+    dFilter==='noinvoice'?(!o.invoiceNum&&o.isPaid):
     true
   ).slice(0,10);
   if(!fl.length){tb.innerHTML='<tr><td colspan="7" class="es"><div class="ei">📋</div><div class="et">אין הזמנות</div><div class="ec">לחץ "הזמנה חדשה" כדי להתחיל!</div></td></tr>';return;}
