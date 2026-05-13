@@ -702,6 +702,8 @@ async function showSBResult(msgApiId, token, orderId, o, c){
               <button onclick="this.closest('div').parentElement.parentElement.remove()" style="padding:10px;border-radius:10px;border:1px solid #e5e7eb;background:#f3f4f6;font-weight:700;cursor:pointer;font-family:inherit">סגור</button>
             </div>
           </div>`;
+        // Close the invoice selection modal
+        document.getElementById('inv-modal')?.remove();
         document.body.appendChild(modal);
         modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
         renderAll();
@@ -1050,7 +1052,7 @@ function generateInvoice(orderId){
         <button onclick="document.getElementById('inv-modal').remove()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px">✕</button>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:10px">
-        <button onclick="createSmartBeeInvoice('${orderId}')" style="width:100%;padding:13px;border-radius:10px;border:none;background:#1e40af;color:#fff;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit">
+        <button id="sb-btn-${orderId}" onclick="this.disabled=true;this.textContent='⏳ מפיק...';createSmartBeeInvoice('${orderId}')" style="width:100%;padding:13px;border-radius:10px;border:none;background:#1e40af;color:#fff;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit">
           📄 הפק חשבונית סמארטבי
         </button>
         <button onclick="sendInvoiceWA('${orderId}')" style="width:100%;padding:13px;border-radius:10px;border:none;background:#25D366;color:#fff;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit">
@@ -1215,7 +1217,11 @@ function esc(t){
 }
 
 function sendInvoiceWA(orderId){
-  const inv=assignInvoiceNum(orderId);
+  // אל תיצור חשבונית חדשה — השתמש בקיימת אם יש, אחרת צור מקומית
+  const o=orders.find(x=>x.id===orderId);
+  if(!o)return;
+  // אם יש כבר חשבונית סמארטבי — אל תיצור עוד אחת
+  const inv=o.sbDocId ? o : assignInvoiceNum(orderId);
   if(!inv)return;
   const c=clients.find(x=>x.name===inv.clientName);
   if(!c?.phone)return alert('אין מספר טלפון ללקוח זה.\nהוסף טלפון בכרטיס הלקוח.');
@@ -1223,11 +1229,9 @@ function sendInvoiceWA(orderId){
   const items=inv.items.map(i=>`• ${i.name} x${i.quantity} — ₪${fmt(i.price*i.quantity)}`).join('\n');
   const msg=`שלום ${inv.clientName} 🐾\n\nחשבונית מס קבלה מספר ${num}\nתאריך: ${inv.date}\n\n${items}\n\nסה"כ לתשלום: ₪${fmt(inv.total)}\nאמצעי תשלום: ${inv.paymentMethod||'מזומן'}\n\n${bizSettings.name}\n📞 ${bizSettings.phone}`;
   const phone=c.phone.replace(/\D/g,'').replace(/^0/,'972');
-  // Download docx first
-  buildDocx(inv);
-  // Then open WhatsApp
-  setTimeout(()=>window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank'),500);
   document.getElementById('inv-modal')?.remove();
+  // פתח WhatsApp
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
 }
 
 
