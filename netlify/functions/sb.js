@@ -1,4 +1,4 @@
-const SB_BASE = 'https://api.smartbee.co.il/api/v1';
+const SB_BASE = 'https://smartbee.co.il/api/v1';
 
 exports.handler = async (event) => {
   const headers = {
