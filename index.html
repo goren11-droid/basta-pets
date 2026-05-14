@@ -600,13 +600,10 @@ function parseDateToISO(dateStr){
 function buildPaymentDetails(paymentMethod, total, date){
   const isoDate=parseDateToISO(date);
   const sum=parseFloat(total)||0;
-  if(!sum) return {cashItems:[{date:isoDate,sum:0}]};
   if(paymentMethod==='מזומן') return {cashItems:[{date:isoDate,sum}]};
   if(paymentMethod==='אשראי') return {creditCardItems:[{creditCardType:'Other',cardNumber:'0000',creditDealType:'Regular',installmentsNumber:1,date:isoDate,sum}]};
   if(paymentMethod==='העברה בנקאית') return {wireTransferItems:[{accountNumber:'000',bankName:'בנק',branchName:'סניף',referenceNum:'000',date:isoDate,sum}]};
-  // ביט / פייבוקס / אחר — otherItems עם description חובה
-  const desc = paymentMethod && paymentMethod.trim() ? paymentMethod.trim() : 'תשלום';
-  return {otherItems:[{description:desc,date:isoDate,sum}]};
+  return {otherItems:[{description:String(paymentMethod||'תשלום'),date:isoDate,sum}]};
 }
 
 async function createSmartBeeInvoice(orderId){
@@ -631,8 +628,7 @@ async function createSmartBeeInvoice(orderId){
   try{
     const token=await sbLogin();
 
-    const payMethod = o.paymentMethod && o.paymentMethod !== 'טרם שולם' ? o.paymentMethod : 'מזומן';
-    const payDetails=buildPaymentDetails(payMethod, o.total, o.date);
+    const payDetails=buildPaymentDetails(o.paymentMethod||'מזומן', o.total, o.date);
     const msgId=uid();
 
     const body={
@@ -646,7 +642,6 @@ async function createSmartBeeInvoice(orderId){
         address: c?.address||undefined,
         cityName: c?.city||undefined,
       },
-      docDate: parseDateToISO(o.date),
       documentItems:{
         paymentItems: o.items.map(it=>({
           description: it.name,
