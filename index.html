@@ -656,10 +656,10 @@ async function createSmartBeeInvoice(orderId){
       creationMetadata:{language:'HEB'}
     };
 
+    // הצג בקשה לדיבוג
+    if(!confirm('שולח לסמארטבי:\n\n'+JSON.stringify(body,null,2).substring(0,800)+'\n\nלחץ OK לשלוח'))return;
+
     const d=await sbFetch('/Documents/create','POST',body,token);
-    // שמור לוג לדיבוג
-    window._lastSBRequest=JSON.stringify(body,null,2);
-    window._lastSBResponse=JSON.stringify(d,null,2);
     document.body.removeChild(loadEl);
 
     if(d.resultCodeId===101||d.resultCodeId===102||d.resultCodeId===103){
