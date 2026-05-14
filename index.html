@@ -249,6 +249,7 @@ tfoot .stk{background:#1c1917}
               <button class="fb-b" onclick="setFilter('unpaid',this)">טרם שולמו</button>
               <button class="fb-b" onclick="setFilter('unsupplied',this)">טרם סופקו</button>
               <button class="fb-b" onclick="setFilter('noinvoice',this)">📄 ללא חשבונית</button>
+              <button class="fb-b" onclick="debugInvoices()" style="background:#fff1f2;color:#b91c1c">🔍 בדוק</button>
             </div>
           </div>
           <button onclick="showPage('orders')" style="color:#d97706;font-size:12px;font-weight:600;background:none;border:none;cursor:pointer;font-family:inherit">צפה בטבלה ←</button>
@@ -656,6 +657,9 @@ async function createSmartBeeInvoice(orderId){
     };
 
     const d=await sbFetch('/Documents/create','POST',body,token);
+    // שמור לוג לדיבוג
+    window._lastSBRequest=JSON.stringify(body,null,2);
+    window._lastSBResponse=JSON.stringify(d,null,2);
     document.body.removeChild(loadEl);
 
     if(d.resultCodeId===101||d.resultCodeId===102||d.resultCodeId===103){
@@ -664,7 +668,8 @@ async function createSmartBeeInvoice(orderId){
       showSBResult(msgApiId, token, orderId, o, c);
     } else {
       const errs=d.validationErrors?JSON.stringify(d.validationErrors):'';
-      alert('❌ שגיאה מסמארטבי ('+d.resultCodeId+')\n'+errs);
+      const showDebug=confirm('❌ שגיאה מסמארטבי ('+d.resultCodeId+')\n'+errs+'\n\nלחץ OK לראות את פרטי הבקשה לשליחה לתמיכה');
+      if(showDebug) alert('REQUEST:\n'+window._lastSBRequest+'\n\nRESPONSE:\n'+window._lastSBResponse);
     }
   }catch(e){
     try{document.body.removeChild(loadEl);}catch(_){}
@@ -978,6 +983,11 @@ function updateOrderSummary(){
     sumEl.innerHTML=`<span style="color:#16a34a;font-weight:700">מכירה: ₪${fmt(totP)}</span> &nbsp;|&nbsp; <span style="color:#dc2626">עלות: ₪${fmt(totC)}</span> &nbsp;|&nbsp; <span style="color:#d97706;font-weight:700">רווח: ₪${fmt(gp)} <span style="background:#fef3c7;padding:1px 6px;border-radius:5px">${gpPct}</span></span>`;
   }
   else if(sumEl)sumEl.innerHTML='';
+}
+function debugInvoices(){
+  const paid=orders.filter(o=>o.isPaid&&o.isSupplied&&o.total>0&&o.paymentMethod!=='היסטורי');
+  const info=paid.slice(0,10).map(o=>`${o.clientName} | invoiceSent:${o.invoiceSent} | invoiceNum:${o.invoiceNum||'—'} | sbDocId:${o.sbDocId||'—'}`).join('\n');
+  alert('הזמנות ששולמו וסופקו (10 ראשונות):\n\n'+info);
 }
 function setClientSort(s){
   clientSort=s;
