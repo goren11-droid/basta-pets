@@ -377,6 +377,7 @@ tfoot .stk{background:#1c1917}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <label class="btn btn-o" style="cursor:pointer">📥 ייבוא מ-CSV<input type="file" accept=".csv" style="display:none" onchange="importClients(this)"></label>
+          <button class="btn" onclick="openBulkWA()" style="background:#25D366;color:#fff;border:none">📢 שלח לכולם</button>
           <button class="btn btn-p" onclick="openClientModal()">＋ לקוח חדש</button>
         </div>
       </div>
@@ -580,12 +581,16 @@ async function sbFetch(path, method='GET', body=null, token=null){
 }
 
 async function sbLogin(){
-  if(sbToken && sbTokenExpiry && new Date()<new Date(sbTokenExpiry)) return sbToken;
+  // תמיד נתחבר מחדש — לא נסמוך על טוקן שמור
+  sbToken=null; sbTokenExpiry=null;
   try{
     const d=await sbFetch('/Login/authenticate','POST',{clientId:SB_CLIENT_ID,password:SB_PASSWORD});
     if(d.token){sbToken=d.token;sbTokenExpiry=d.expirationUtcDate;return sbToken;}
     throw new Error('Login failed: '+JSON.stringify(d));
-  }catch(e){throw new Error('שגיאת התחברות לסמארטבי: '+e.message);}
+  }catch(e){
+    sbToken=null; sbTokenExpiry=null;
+    throw new Error('שגיאת התחברות לסמארטבי: '+e.message);
+  }
 }
 
 function parseDateToISO(dateStr){
@@ -730,7 +735,7 @@ function sbSendWhatsApp(encodedLink, orderId){
   const c=clients.find(x=>x.name===o?.clientName);
   if(!c?.phone)return alert('אין מספר טלפון ללקוח');
   const link=decodeURIComponent(encodedLink);
-  const msg=`שלום ${o.clientName} 🐾\n\nמצורפת חשבונית מס קבלה מספר ${o.invoiceNum}\nסכום: ₪${fmt(o.total)}\n\n${link}\n\n${bizSettings.name}\n📞 ${bizSettings.phone}`;
+  const msg=`שלום ${o.clientName} 🐾\n\nמצורפת חשבונית מס קבלה מספר ${o.invoiceNum}\nסכום: ₪${fmt(o.total)}\n\n${link}\n\nתודה ${o.clientName} 😊\nאם אתה אוהב את השירות שלנו, נשמח אם תמליץ עלינו לחברים שלך 🙏\nיום מעולה!`;
   const phone=c.phone.replace(/\D/g,'').replace(/^0/,'972');
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
 }
@@ -985,6 +990,99 @@ function debugInvoices(){
   const info=paid.slice(0,10).map(o=>`${o.clientName} | invoiceSent:${o.invoiceSent} | invoiceNum:${o.invoiceNum||'—'} | sbDocId:${o.sbDocId||'—'}`).join('\n');
   alert('הזמנות ששולמו וסופקו (10 ראשונות):\n\n'+info);
 }
+function openBulkWA(){
+  const active=clients.filter(c=>c.active&&c.phone);
+  const m=document.createElement('div');
+  m.id='bulk-wa-modal';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl';
+  m.innerHTML=`
+    <div style="background:#fff;border-radius:18px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <div style="background:linear-gradient(135deg,#25D366,#128C7E);color:#fff;padding:18px 20px;border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:800;font-size:16px">📢 שליחה בתפוצה רחבה</div>
+          <div style="font-size:12px;opacity:.85;margin-top:2px">${active.length} לקוחות עם טלפון</div>
+        </div>
+        <button onclick="document.getElementById('bulk-wa-modal').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:18px">✕</button>
+      </div>
+      <div style="padding:20px">
+        <div style="margin-bottom:12px">
+          <div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:6px">תבניות מוכנות:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <button onclick="setTemplate('recommend')" style="padding:6px 12px;border-radius:20px;border:1px solid #25D366;background:#f0fdf4;color:#15803d;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">⭐ המלצה</button>
+            <button onclick="setTemplate('checkin')" style="padding:6px 12px;border-radius:20px;border:1px solid #F59E0B;background:#fffbeb;color:#92400e;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🐾 שאלת שלום</button>
+            <button onclick="setTemplate('promo')" style="padding:6px 12px;border-radius:20px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🎁 מבצע</button>
+            <button onclick="setTemplate('custom')" style="padding:6px 12px;border-radius:20px;border:1px solid #e5e7eb;background:#f9fafb;color:#374151;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✏️ הודעה חופשית</button>
+          </div>
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="font-size:12px;font-weight:700;color:#6b7280;display:block;margin-bottom:4px">תוכן ההודעה <span style="color:#a8a29e;font-weight:400">(כתוב {שם} להוספת שם הלקוח)</span></label>
+          <textarea id="bulk-msg" rows="7" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit;resize:vertical;direction:rtl;box-sizing:border-box;outline:none" placeholder="כתוב כאן את ההודעה..."></textarea>
+        </div>
+        <div style="background:#f9fafb;border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px;color:#6b7280">
+          <strong>איך זה עובד:</strong> ייפתח חלון WhatsApp לכל לקוח בנפרד. תשלח ותסגור, ואז הבא נפתח. מומלץ לשלוח עד 50 בפעם.
+        </div>
+        <div style="display:flex;gap:10px">
+          <button onclick="document.getElementById('bulk-wa-modal').remove()" style="flex:1;padding:12px;border-radius:10px;border:1px solid #e5e7eb;background:#f3f4f6;font-weight:700;cursor:pointer;font-family:inherit">ביטול</button>
+          <button onclick="startBulkWA()" style="flex:2;padding:12px;border-radius:10px;border:none;background:#25D366;color:#fff;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit">📱 התחל שליחה (${active.length} לקוחות)</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+  setTemplate('recommend');
+}
+
+function setTemplate(t){
+  const ta=document.getElementById('bulk-msg');
+  if(!ta)return;
+  const biz=bizSettings.name||'הבסטה לחיות מחמד';
+  const phone=bizSettings.phone||'';
+  if(t==='recommend') ta.value=`שלום {שם} 🐾\n\nתודה שאתה לקוח יקר שלנו!\nאם אתה מרוצה מהשירות, נשמח מאוד אם תמליץ עלינו לחברים ולמשפחה שלך 🙏\n\nכל המלצה חדשה — הנחה של 10% בהזמנה הבאה שלך! 🎁\n\n${biz}\n📞 ${phone}`;
+  else if(t==='checkin') ta.value=`שלום {שם} 🐾\n\nרצינו לבדוק שהכל בסדר עם חיות המחמד שלך ❤️\nיש לנו מוצרים חדשים ומבצעים מיוחדים החודש!\n\nמוזמן/ת ליצור קשר בכל שאלה 😊\n\n${biz}\n📞 ${phone}`;
+  else if(t==='promo') ta.value=`שלום {שם} 🐾\n\n🎁 מבצע מיוחד ללקוחות קבועים!\n\nהחודש הנחה של 15% על כל הזמנה מעל ₪200.\n\nמהרו — המבצע מוגבל! 🔥\n\n${biz}\n📞 ${phone}`;
+  else ta.value='';
+  ta.focus();
+}
+
+let bulkIndex=0, bulkList=[], bulkMsg='';
+
+function startBulkWA(){
+  const msg=document.getElementById('bulk-msg')?.value?.trim();
+  if(!msg)return alert('יש לכתוב הודעה');
+  bulkList=clients.filter(c=>c.active&&c.phone);
+  if(!bulkList.length)return alert('אין לקוחות עם מספר טלפון');
+  bulkMsg=msg;
+  bulkIndex=0;
+  document.getElementById('bulk-wa-modal')?.remove();
+  sendNextBulk();
+}
+
+function sendNextBulk(){
+  if(bulkIndex>=bulkList.length){
+    alert('✅ סיימת לשלוח לכל '+bulkList.length+' הלקוחות!');
+    return;
+  }
+  const c=bulkList[bulkIndex];
+  const personalMsg=bulkMsg.replace(/\{שם\}/g,c.name);
+  const phone=c.phone.replace(/\D/g,'').replace(/^0/,'972');
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(personalMsg)}`,'_blank');
+  bulkIndex++;
+  // הצג כפתור "הבא" אחרי כל שליחה
+  const remaining=bulkList.length-bulkIndex;
+  if(remaining>0){
+    const b=document.createElement('div');
+    b.id='bulk-next-btn';
+    b.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;gap:10px;direction:rtl';
+    b.innerHTML=`
+      <button onclick="document.getElementById('bulk-next-btn').remove();sendNextBulk()" style="padding:14px 24px;background:#25D366;color:#fff;border:none;border-radius:14px;font-weight:800;font-size:16px;cursor:pointer;font-family:inherit;box-shadow:0 4px 20px rgba(37,211,102,.4)">
+        📱 הבא: ${bulkList[bulkIndex].name} (${remaining} נותרו)
+      </button>
+      <button onclick="document.getElementById('bulk-next-btn').remove();alert('עצרת. נשלח ל-'+bulkIndex+' לקוחות.')" style="padding:14px 18px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:14px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">עצור</button>`;
+    document.getElementById('bulk-next-btn')?.remove();
+    document.body.appendChild(b);
+  }
+}
+
 function setClientSort(s){
   clientSort=s;
   document.getElementById('cs-all').className='fb-b'+(s==='all'?' active':'');
