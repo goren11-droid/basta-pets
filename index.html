@@ -1624,7 +1624,7 @@ function cloneOrder(orderId){
   const o=orders.find(x=>x.id===orderId);
   if(!o)return;
   const clientName=o.clientName;
-  if(!confirm(\`🔄 לשחזר הזמנה עבור \${clientName}?\n\nהמוצרים יועתקו להזמנה חדשה ותוכל לערוך לפני שמירה.\`))return;
+  if(!confirm(`🔄 לשחזר הזמנה עבור ${clientName}?\n\nהמוצרים יועתקו להזמנה חדשה ותוכל לערוך לפני שמירה.`))return;
   // Open order modal pre-filled with the same client and items
   editOrderId=null;
   const cl=clients.find(c=>c.name===clientName);
@@ -1904,7 +1904,7 @@ function renderDash(){
       <button onclick="openOrderModal('${o.id}')" style="background:none;border:none;cursor:pointer;font-size:15px;padding:3px 6px;border-radius:6px;color:#1d4ed8" title="ערוך הזמנה" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='none'">✏️</button>
       <button onclick="cloneOrder('${o.id}')" style="background:none;border:none;cursor:pointer;font-size:15px;padding:3px 6px;border-radius:6px;color:#15803d" title="שחזר הזמנה" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='none'">🔄</button>
     </td>
-  </tr>\`;
+  </tr>`;
   }).join('');
 }
 function renderOrders(){
