@@ -383,7 +383,7 @@ tfoot .stk{background:var(--sidebar)}
         </div>
       </div>
       <div class="tc"><div class="tw"><table>
-        <thead><tr><th>שם לקוח</th><th>טלפון</th><th style="text-align:center">הזמנה קודמת</th><th style="text-align:center">הזמנה אחרונה</th><th>צפי הבאה</th><th style="text-align:center">פעולות</th></tr></thead>
+        <thead><tr><th>שם לקוח</th><th>טלפון</th><th style="text-align:center">הזמנה קודמת</th><th style="text-align:center">הזמנה אחרונה</th><th>צפי הבאה</th><th style="text-align:center;min-width:130px">פעולות</th></tr></thead>
         <tbody id="cli-body"><tr><td colspan="6" class="es"><div class="ei">👥</div><div class="et">אין לקוחות</div><div class="ec">לחץ "לקוח חדש"</div></td></tr></tbody>
       </table></div></div>
     </div>
@@ -479,11 +479,14 @@ tfoot .stk{background:var(--sidebar)}
         <div class="fg"><label class="fl">טלפון</label><input id="cp" class="fi" placeholder="050-0000000"></div>
         <div class="fg"><label class="fl">עיר</label><input id="cc" class="fi" placeholder="עיר..."></div>
         <div class="fg full"><label class="fl">כתובת למשלוח (רחוב + מספר)</label><input id="caddr" class="fi" placeholder="רחוב הרצל 5..."></div>
+        <div class="fg full"><label class="fl">חיית מחמד (שם + סוג)</label><input id="cpet" class="fi" placeholder="למשל: כוקי — כלב לברדור, מיאו — חתול פרסי..."></div>
+        <div class="fg full"><label class="fl">הערות</label><textarea id="cnotes" class="fi" rows="2" style="resize:vertical;font-family:inherit;font-size:13px" placeholder="אלרגיות, העדפות, פרטים חשובים..."></textarea></div>
       </div>
     </div>
     <div class="mf">
       <button class="btn" style="background:#f3f4f6;color:#374151" onclick="closeM('mc')">ביטול</button>
       <button class="btn" id="mc-del" style="background:#fff1f2;color:#b91c1c;display:none" onclick="deleteClient()">🗑 מחק</button>
+      <button class="btn" id="mc-merge" style="background:#fffbeb;color:#92400e;border:1px solid #fde68a;display:none" onclick="openMergeModal(editClientId)">🔀 מזג</button>
       <button class="btn btn-p" onclick="saveC()">שמור</button>
     </div>
   </div>
@@ -767,8 +770,11 @@ function openClientModal(id=null){
   document.getElementById('cp').value=c?c.phone||'':'';
   document.getElementById('cc').value=c?c.city||'':'';
   document.getElementById('caddr').value=c?c.address||'':'';
+  document.getElementById('cpet').value=c?c.petName||'':'';
+  document.getElementById('cnotes').value=c?c.notes||'':'';
   document.getElementById('mc-title').textContent=c?'✏️ עריכת לקוח':'👤 לקוח חדש';
   document.getElementById('mc-del').style.display=c?'inline-flex':'none';
+  document.getElementById('mc-merge').style.display=c?'inline-flex':'none';
   document.getElementById('mc').classList.add('open');
 }
 function openProductModal(id=null){
@@ -806,13 +812,15 @@ function saveC(){
   const phone=document.getElementById('cp').value.trim();
   const city=document.getElementById('cc').value.trim();
   const address=document.getElementById('caddr').value.trim();
+  const petName=document.getElementById('cpet').value.trim();
+  const notes=document.getElementById('cnotes').value.trim();
   if(editClientId){
     const old=clients.find(c=>c.id===editClientId);
     const oldName=old?.name;
-    clients=clients.map(c=>c.id===editClientId?{...c,name:n,phone,city,address}:c);
+    clients=clients.map(c=>c.id===editClientId?{...c,name:n,phone,city,address,petName,notes}:c);
     if(oldName&&oldName!==n) orders=orders.map(o=>o.clientName===oldName?{...o,clientName:n,city:city||o.city}:o);
   } else {
-    clients.push({id:uid(),name:n,phone,city,address,active:true});
+    clients.push({id:uid(),name:n,phone,city,address,petName,notes,active:true});
   }
   closeM('mc');renderAll();
 }
@@ -1682,6 +1690,154 @@ function getPred(name){
   const ns=`${String(nx.getDate()).padStart(2,'0')}/${String(nx.getMonth()+1).padStart(2,'0')}/${nx.getFullYear()}`;
   return{s:'ok',dr,ld:co[0].date,pd2:co[1].date,nd:ns,cyc};
 }
+// ============ CRM — מיזוג / מוצרים / ווצאפ חכם ============
+
+function getClientProducts(name){
+  const clientOrds=orders.filter(o=>o.clientName===name&&o.total>0).sort((a,b)=>pd(b.date)-pd(a.date));
+  if(!clientOrds.length)return[];
+  const prodMap={};
+  clientOrds.forEach(o=>{
+    o.items.forEach(it=>{
+      if(!it.name||it.name==='רכישת עבר')return;
+      if(!prodMap[it.name])prodMap[it.name]=[];
+      const t=pd(o.date);
+      if(t&&!prodMap[it.name].includes(t))prodMap[it.name].push(t);
+    });
+  });
+  return Object.entries(prodMap).map(([pname,dates])=>{
+    dates.sort((a,b)=>b-a);
+    const lastDate=dates[0];
+    const lastStr=`${String(new Date(lastDate).getDate()).padStart(2,'0')}/${String(new Date(lastDate).getMonth()+1).padStart(2,'0')}`;
+    if(dates.length<2)return{pname,lastDate,lastStr,cyc:null,dr:null};
+    const gaps=[];for(let i=0;i<dates.length-1;i++)gaps.push(dates[i]-dates[i+1]);
+    const cyc=Math.round(gaps.reduce((s,g)=>s+g,0)/gaps.length/86400000);
+    if(cyc<=0)return{pname,lastDate,lastStr,cyc:null,dr:null};
+    const nx=new Date(lastDate+cyc*86400000);
+    const td=new Date();td.setHours(0,0,0,0);nx.setHours(0,0,0,0);
+    const dr=Math.round((nx-td)/86400000);
+    const nd=`${String(nx.getDate()).padStart(2,'0')}/${String(nx.getMonth()+1).padStart(2,'0')}`;
+    return{pname,lastDate,lastStr,cyc,dr,nd};
+  }).sort((a,b)=>(a.dr??9999)-(b.dr??9999));
+}
+
+function openMergeModal(keepId){
+  const keep=clients.find(c=>c.id===keepId);
+  if(!keep)return;
+  const others=clients.filter(c=>c.id!==keepId&&c.active);
+  const m=document.createElement('div');
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl';
+  m.innerHTML=`<div style="background:#fff;border-radius:18px;max-width:420px;width:100%;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-weight:800;font-size:16px;margin-bottom:6px">🔀 מזג לקוחות</div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:14px">מזג כרטיס נוסף לתוך <strong>${keep.name}</strong>.<br>כל ההזמנות יועברו לכרטיס זה, והכרטיס הישן יימחק.</div>
+    <select id="merge-target" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:10px;font-family:inherit;font-size:14px;margin-bottom:16px">
+      <option value="">-- בחר כרטיס למיזוג --</option>
+      ${others.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:10px">
+      <button onclick="this.closest('div[style*=fixed]').remove()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #e5e7eb;background:#f3f4f6;font-weight:700;cursor:pointer;font-family:inherit">ביטול</button>
+      <button onclick="doMerge('${keepId}')" style="flex:2;padding:11px;border-radius:10px;border:none;background:#d97706;color:#fff;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit">🔀 מזג</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+}
+
+function doMerge(keepId){
+  const deleteId=document.getElementById('merge-target')?.value;
+  if(!deleteId)return alert('יש לבחור כרטיס למיזוג');
+  const keep=clients.find(c=>c.id===keepId);
+  const del=clients.find(c=>c.id===deleteId);
+  if(!keep||!del)return;
+  if(!confirm(`מזג את "${del.name}" לתוך "${keep.name}"?\nהפעולה לא ניתנת לביטול.`))return;
+  orders=orders.map(o=>o.clientName===del.name?{...o,clientName:keep.name}:o);
+  clients=clients.filter(c=>c.id!==deleteId);
+  document.querySelectorAll('div[style*="position:fixed"]').forEach(el=>{if(!el.id)el.remove();});
+  closeM('mc');
+  saveToLocalStorage();syncToFirebase();renderAll();
+  alert(`✅ "${del.name}" מוזג בהצלחה לתוך "${keep.name}"`);
+}
+
+function showClientProducts(clientId){
+  const c=clients.find(x=>x.id===clientId);
+  if(!c)return;
+  const prods=getClientProducts(c.name);
+  const m=document.createElement('div');
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl';
+  const rows=prods.length?prods.map(p=>{
+    const urgent=p.dr!==null&&p.dr<=3;
+    const overdue=p.dr!==null&&p.dr<0;
+    const bg=overdue?'#fff1f2':urgent?'#fffbeb':'#f9fafb';
+    const drTxt=p.dr===null?'—':p.dr<0?`באיחור ${Math.abs(p.dr)}י`:p.dr===0?'היום!💥':`בעוד ${p.dr}י`;
+    const drColor=overdue?'#b91c1c':urgent?'#d97706':'#16a34a';
+    return`<tr style="background:${bg}">
+      <td style="padding:9px 10px;font-weight:600">${p.pname}</td>
+      <td style="padding:9px 10px;color:#78716c;font-size:12px;text-align:center">${p.lastStr}</td>
+      <td style="padding:9px 10px;color:#78716c;font-size:12px;text-align:center">${p.cyc?p.cyc+'י':'—'}</td>
+      <td style="padding:9px 10px;font-weight:700;font-size:12px;color:${drColor};text-align:center">${drTxt}</td>
+    </tr>`;
+  }).join(''):`<tr><td colspan="4" style="padding:20px;text-align:center;color:#a8a29e">אין היסטוריית הזמנות</td></tr>`;
+  const petLine=c.petName?`<div style="font-size:12px;color:#6b7280;margin-bottom:2px">🐾 ${c.petName}</div>`:'';
+  const notesLine=c.notes?`<div style="font-size:12px;color:#6b7280;background:#f9fafb;padding:8px 10px;border-radius:8px;margin-top:8px">📝 ${c.notes}</div>`:'';
+  m.innerHTML=`<div style="background:#fff;border-radius:18px;max-width:500px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;padding:16px 20px;border-radius:18px 18px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-weight:800;font-size:15px">📦 מוצרי ${c.name}</div>
+        ${c.phone?`<div style="font-size:12px;opacity:.85">${c.phone}</div>`:''}
+      </div>
+      <button onclick="this.closest('div[style*=fixed]').remove()" style="background:rgba(255,255,255,.25);border:none;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:18px">✕</button>
+    </div>
+    <div style="padding:16px">
+      ${petLine}${notesLine}
+      <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
+        <thead><tr style="background:#f9fafb">
+          <th style="padding:8px 10px;text-align:right;color:#6b7280;font-size:11px">מוצר</th>
+          <th style="padding:8px 10px;text-align:center;color:#6b7280;font-size:11px">אחרון</th>
+          <th style="padding:8px 10px;text-align:center;color:#6b7280;font-size:11px">טווח</th>
+          <th style="padding:8px 10px;text-align:center;color:#6b7280;font-size:11px">בעוד</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${c.phone?`<button onclick="openClientWA('${clientId}');this.closest('div[style*=fixed]').remove();" style="width:100%;margin-top:12px;padding:12px;background:#25D366;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit">💬 שלח תזכורת WhatsApp</button>`:''}
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+}
+
+function openClientWA(clientId){
+  const c=clients.find(x=>x.id===clientId);
+  if(!c||!c.phone)return alert('אין מספר טלפון ללקוח זה');
+  const prods=getClientProducts(c.name);
+  const due=prods.filter(p=>p.dr!==null&&p.dr<=5);
+  let msg=`שלום ${c.name} 🐾\n\n`;
+  if(due.length){
+    msg+=`הגיע הזמן לחידוש המלאי:\n`;
+    due.forEach(p=>{
+      const st=p.dr<0?`(${Math.abs(p.dr)} ימים באיחור 🔴)`:p.dr===0?'(היום! 💥)':`(בעוד ${p.dr} ימים)`;
+      msg+=`• ${p.pname} ${st}\n`;
+    });
+    msg+=`\nרוצה שנכין לך הזמנה? 😊\n\n`;
+  } else {
+    msg+=`מה שלומך? 😊\nאנחנו כאן אם אתה צריך משהו!\n\n`;
+  }
+  if(c.petName)msg+=`מה שלום ${c.petName.split('—')[0].trim()}? 🐾\n\n`;
+  msg+=`${bizSettings.name}\n📞 ${bizSettings.phone}`;
+  const modal=document.createElement('div');
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl';
+  modal.innerHTML=`<div style="background:#fff;border-radius:18px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
+    <div style="background:linear-gradient(135deg,#25D366,#128C7E);color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:800">💬 WhatsApp ל${c.name}</div>
+      <button onclick="this.closest('div[style*=fixed]').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <div style="padding:18px">
+      <textarea id="cwa-msg" rows="9" style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit;resize:vertical;direction:rtl;box-sizing:border-box;outline:none">${msg}</textarea>
+      <button onclick="const ph='${c.phone}'.replace(/\\D/g,'').replace(/^0/,'972');window.location.href='https://wa.me/'+ph+'?text='+encodeURIComponent(document.getElementById('cwa-msg').value);" style="width:100%;margin-top:12px;padding:13px;background:#25D366;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit">📱 פתח WhatsApp</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+}
+
 function migrateInvoices(){
   // הוסף הזמנות ישנות עם מספר חשבונית לארכיון אם עדיין לא שם
   var existingIds=invoices.map(function(x){return x.id;});
@@ -1980,10 +2136,24 @@ function renderClients(){
       }).map(x=>x.c);
     }
     tb.innerHTML=ac.map(c=>{
-      const p=getPred(c.name);let ph='<span style="color:#a8a29e;font-size:12px">— ממתין —</span>';
-      if(p.s==='ok'){const urg=p.dr<4;const tx=p.dr<0?`באיחור ${Math.abs(p.dr)}י`:p.dr===0?'היום!':`בעוד ${p.dr} ימים`;ph=`<div style="font-weight:700;font-size:13px;margin-bottom:3px">${p.nd}</div><span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px;border:1px solid;${urg?'background:#fff1f2;color:#b91c1c;border-color:#fecaca':'background:#f0fdf4;color:#15803d;border-color:#bbf7d0'}">⏰ ${tx}</span>`;if(urg&&c.phone)ph+=`<a href="https://wa.me/${c.phone.replace(/\D/g,'')}?text=${encodeURIComponent('היי '+c.name+', עבר זמן...')}" target="_blank" style="margin-right:6px;color:#16a34a;background:#dcfce7;padding:3px 7px;border-radius:6px;font-size:11px;text-decoration:none">💬</a>`;}
-      return`<tr style="${p.s==='ok'&&p.dr<0?'background:#fff8f8':''}">
-        <td style="font-weight:600">${c.name}${c.address?`<div style="font-size:11px;color:#a8a29e;font-weight:400">${c.address}${c.city?', '+c.city:''}</div>`:''}</td>
+      const p=getPred(c.name);
+      // בדיקת סיכון נטישה: כל המוצרים
+      const prods=getClientProducts(c.name);
+      const hasOverdue=prods.some(pr=>pr.dr!==null&&pr.dr<0);
+      const hasDoubleOverdue=prods.some(pr=>pr.dr!==null&&pr.dr<-(pr.cyc||30));
+      const rowBg=hasDoubleOverdue?'background:#fff0f0':hasOverdue?'background:#fff8f8':'';
+      // תא תחזית
+      let ph='<span style="color:#a8a29e;font-size:12px">— ממתין —</span>';
+      if(p.s==='ok'){
+        const urg=p.dr<4;
+        const tx=p.dr<0?`באיחור ${Math.abs(p.dr)}י`:p.dr===0?'היום!':`בעוד ${p.dr} ימים`;
+        ph=`<div style="font-weight:700;font-size:13px;margin-bottom:3px">${p.nd}</div><span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px;border:1px solid;${urg?'background:#fff1f2;color:#b91c1c;border-color:#fecaca':'background:#f0fdf4;color:#15803d;border-color:#bbf7d0'}">⏰ ${tx}</span>`;
+      }
+      // שם עם חיית מחמד
+      const petBadge=c.petName?`<div style="font-size:11px;color:#d97706;font-weight:400;margin-top:1px">🐾 ${c.petName.split(',')[0].trim()}</div>`:'';
+      const addrLine=c.address?`<div style="font-size:11px;color:#a8a29e;font-weight:400">${c.address}${c.city?', '+c.city:''}</div>`:'';
+      return`<tr style="${rowBg}">
+        <td style="font-weight:600">${c.name}${addrLine}${petBadge}</td>
         <td style="color:#78716c">${c.phone||'—'}</td>
         <td style="text-align:center">
           <input type="text" value="${p.pd2||''}" placeholder="dd/mm/yyyy"
@@ -2000,9 +2170,11 @@ function renderClients(){
             title="הזמנה אחרונה">
         </td>
         <td>${ph}</td>
-        <td style="text-align:center"><div style="display:flex;gap:5px;justify-content:center">
-          <button onclick="openClientModal('${c.id}')" class="btn btn-sm" style="background:#eff6ff;color:#1d4ed8;border:none">✏️</button>
-          <button onclick="archC('${c.id}')" class="btn btn-sm" style="background:#f3f4f6;color:#6b7280;border:none">📁</button>
+        <td style="text-align:center"><div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap">
+          <button onclick="showClientProducts('${c.id}')" class="btn btn-sm" style="background:#fffbeb;color:#d97706;border:1px solid #fde68a" title="מוצרים ותחזית">📦</button>
+          ${c.phone?`<button onclick="openClientWA('${c.id}')" class="btn btn-sm" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0" title="שלח WhatsApp">💬</button>`:''}
+          <button onclick="openClientModal('${c.id}')" class="btn btn-sm" style="background:#eff6ff;color:#1d4ed8;border:none" title="עריכה">✏️</button>
+          <button onclick="archC('${c.id}')" class="btn btn-sm" style="background:#f3f4f6;color:#6b7280;border:none" title="ארכיון">📁</button>
         </div></td>
       </tr>`;
     }).join('');
