@@ -1670,15 +1670,17 @@ function getPred(name){
   const co=orders.filter(o=>o.clientName===name).sort((a,b)=>pd(b.date)-pd(a.date));
   if(!co.length)return{s:'none'};
   if(co.length===1)return{s:'one',ld:co[0].date};
-  const lt=pd(co[0].date),pt2=pd(co[1].date);
-  if(!lt||!pt2)return{s:'inv',ld:co[0].date,pd2:co[1].date};
-  const cyc=Math.round((lt-pt2)/86400000);
+  // ממוצע כל הטווחים בין הזמנות עוקבות
+  const dates=co.map(o=>pd(o.date)).filter(Boolean);
+  if(dates.length<2)return{s:'inv',ld:co[0].date,pd2:co[1].date};
+  const gaps=[];for(let i=0;i<dates.length-1;i++)gaps.push(dates[i]-dates[i+1]);
+  const cyc=Math.round(gaps.reduce((s,g)=>s+g,0)/gaps.length/86400000);
   if(cyc<=0)return{s:'inv',ld:co[0].date,pd2:co[1].date};
-  const nx=new Date(lt+cyc*86400000);
+  const nx=new Date(dates[0]+cyc*86400000);
   const td2=new Date();td2.setHours(0,0,0,0);nx.setHours(0,0,0,0);
   const dr=Math.round((nx-td2)/86400000);
   const ns=`${String(nx.getDate()).padStart(2,'0')}/${String(nx.getMonth()+1).padStart(2,'0')}/${nx.getFullYear()}`;
-  return{s:'ok',dr,ld:co[0].date,pd2:co[1].date,nd:ns};
+  return{s:'ok',dr,ld:co[0].date,pd2:co[1].date,nd:ns,cyc};
 }
 function migrateInvoices(){
   // הוסף הזמנות ישנות עם מספר חשבונית לארכיון אם עדיין לא שם
@@ -2188,10 +2190,10 @@ function renderMonthly(){
     const yrNum=parseInt(yr);
     const yrSettings=yearSettings[yrNum]||{acc:350,vat:0,bt:0,tx:0};
     const totalExpenses=yrSettings.acc+(yrSettings.vat||0)+yrSettings.bt+yrSettings.tx;
-    const annualNet=tgp-totalExpenses;
     const monthsWithData=data.filter(d=>d.sb>0||d.cb>0).length||1;
-    const avgMonthSalary=annualNet/monthsWithData;
-    const expensePerMonth=totalExpenses/monthsWithData;
+    const expensePerMonth=totalExpenses/12;
+    const avgMonthSalary=(tgp/monthsWithData)-expensePerMonth;
+    const annualNet=avgMonthSalary*monthsWithData;
     // נטו לכל חודש = רווח גולמי חודשי פחות חלק שווה מהוצאות
     const getMonthNet=(d)=>d.gp - expensePerMonth;
     return`<div style="margin-bottom:28px"><div class="yh">📊 שנת ${yr}</div>
