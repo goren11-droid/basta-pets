@@ -2694,17 +2694,38 @@ document.addEventListener('DOMContentLoaded',function(){
 
 <script>
 // ============ PWA SETUP ============
-// Service Worker for offline
+// Service Worker — network-first so updates are always visible
 if('serviceWorker' in navigator){
+  const BUILD_TS='__BUILD_TS__';
   const swCode=`
-    const CACHE='basta-v1';
-    const FILES=['/'];
-    self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES))));
-    self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).catch(()=>caches.match('/')))));
-  `;
+    const CACHE='basta-${Date.now()}';
+    const OLD_CACHES_PREFIX='basta-';
+    self.addEventListener('install',()=>self.skipWaiting());
+    self.addEventListener('activate',e=>e.waitUntil(
+      caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith(OLD_CACHES_PREFIX)&&k!==CACHE).map(k=>caches.delete(k))))
+        .then(()=>self.clients.claim())
+    ));
+    self.addEventListener('fetch',e=>{
+      if(e.request.method!=='GET')return;
+      e.respondWith(fetch(e.request).then(r=>{
+        const cl=r.clone();
+        caches.open(CACHE).then(c=>c.put(e.request,cl));
+        return r;
+      }).catch(()=>caches.match(e.request)));
+    });
+  `.replace('__BUILD_TS__', String(Date.now()));
   const blob=new Blob([swCode],{type:'application/javascript'});
   navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(()=>{});
 }
+
+// Update PWA manifest icon to use the real business logo
+(function(){
+  try{
+    const mf={name:'הבסטה לחיות מחמד',short_name:'באסטה',start_url:'.',display:'standalone',background_color:'#FAFAF9',theme_color:'#F59E0B',orientation:'portrait',icons:[{src:BASTA_LOGO_SMALL,sizes:'192x192',type:'image/jpeg'},{src:BASTA_LOGO_SMALL,sizes:'512x512',type:'image/jpeg'}]};
+    const el=document.querySelector('link[rel="manifest"]');
+    if(el)el.href='data:application/manifest+json,'+encodeURIComponent(JSON.stringify(mf));
+  }catch(e){}
+})();
 
 // Show install banner
 window.addEventListener('load',()=>{
