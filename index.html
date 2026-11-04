@@ -278,6 +278,7 @@ tfoot .stk{background:var(--sidebar)}
           <button class="btn btn-p" onclick="openOrderModal()">＋ הוסף הזמנה</button>
         </div>
       </div>
+      <div id="ord-month-bar" style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 0 6px"></div>
       <div class="tc"><div class="tw"><table style="min-width:980px">
         <thead><tr>
           <th class="stk">לקוח</th><th>תאריך</th><th>עיר</th><th>מוצרים</th>
@@ -759,7 +760,7 @@ function showPage(n){
   closeSidebar();
   renderAll();
 }
-let editClientId=null,editProductId=null,selectedFinYear=null,yearSettings={},clientSort='urgent',invoices=[];
+let editClientId=null,editProductId=null,selectedFinYear=null,yearSettings={},clientSort='urgent',invoices=[],ordersMonthFilter=null;
 function openClientModal(id=null){
   editClientId=id;
   const c=id?clients.find(x=>x.id===id):null;
@@ -1912,11 +1913,18 @@ function renderDash(){
 function renderOrders(){
   const tb=document.getElementById('ord-body');
   const ordQ=(document.getElementById('ord-search')?.value||'').trim().toLowerCase();
-  const real=orders.filter(o=>o.total>0).filter(o=>!ordQ||
-    o.clientName.toLowerCase().includes(ordQ)||
-    (o.city&&o.city.toLowerCase().includes(ordQ))||
-    o.date.includes(ordQ)
-  );
+  // בנה כפתורי חודשים
+  const bar=document.getElementById('ord-month-bar');
+  if(bar){
+    const months=[...new Set(orders.filter(o=>o.total>0&&o.date).map(o=>{const p=o.date.split('/');return p.length===3?p[2]+'/'+p[1]:null}).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
+    const heMonths=['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+    bar.innerHTML='<button onclick="ordersMonthFilter=null;renderOrders()" style="padding:4px 12px;border-radius:20px;border:1px solid;cursor:pointer;font-size:12px;font-family:inherit;'+(ordersMonthFilter===null?'background:#d97706;color:#fff;border-color:#d97706':'background:#fff;color:#78716c;border-color:#e5e7eb')+'">הכל</button>'+
+      months.map(m=>{const[y,mo]=m.split('/');const label=heMonths[parseInt(mo)-1]+' '+y;return`<button onclick="ordersMonthFilter='${m}';renderOrders()" style="padding:4px 12px;border-radius:20px;border:1px solid;cursor:pointer;font-size:12px;font-family:inherit;${ordersMonthFilter===m?'background:#d97706;color:#fff;border-color:#d97706':'background:#fff;color:#78716c;border-color:#e5e7eb'}">${label}</button>`;}).join('');
+  }
+  const real=orders.filter(o=>o.total>0).filter(o=>{
+    if(ordersMonthFilter){const p=o.date&&o.date.split('/');const key=p&&p.length===3?p[2]+'/'+p[1]:null;if(key!==ordersMonthFilter)return false;}
+    return !ordQ||o.clientName.toLowerCase().includes(ordQ)||(o.city&&o.city.toLowerCase().includes(ordQ))||o.date.includes(ordQ);
+  });
   if(!real.length){tb.innerHTML='<tr><td colspan="13" class="es"><div class="ei">📋</div><div class="et">אין הזמנות</div></td></tr>';['tcb','tca','tsb','tsa','tp','tp-pct'].forEach(id=>document.getElementById(id).textContent='—');return;}
   let cb=0,ca=0,sb=0,sa=0;
   tb.innerHTML=real.map(o=>{
@@ -2367,11 +2375,21 @@ function updateSyncStatus(s){
   if(dot){dot.style.background=r[2];}
 }
 
+function saveBackup(){
+  try{
+    var backup={clients:clients,orders:orders,products:products,ts:Date.now()};
+    var backups=JSON.parse(localStorage.getItem('basta_backups')||'[]');
+    backups.unshift(backup);
+    if(backups.length>5)backups=backups.slice(0,5);
+    localStorage.setItem('basta_backups',JSON.stringify(backups));
+  }catch(e){}
+}
 function syncToFirebase(){
   if(isSyncing||isFromFirebase)return;
   clearTimeout(syncTimer);
   syncTimer=setTimeout(function(){
     isSyncing=true;
+    saveBackup();
     updateSyncStatus('saving');
     var data={clients:clients,orders:orders,products:products,historicalMonths:historicalMonths,yearSettings:yearSettings,invoiceCounter:invoiceCounter,bizSettings:bizSettings,invoices:invoices,ts:Date.now()};
     fetch(DB_URL,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
